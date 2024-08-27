@@ -1,0 +1,12 @@
+1.
+A Makefile is a script that compiles a program. 
+Using a makefile makes it easy for others to correctly compile the program.
+
+2.
+A pointer is a variable that holds a memory address.
+
+3.
+The -O3 flag enables the highest level of optimizations when compiling with GCC or Clang. 
+
+4.
+You pass a pointer to the value, e.g. foo(&bar);
