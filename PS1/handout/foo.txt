@@ -1,5 +1,0 @@
-            ols = {},
-            zls = {},
-            pyright = {},
-
-
