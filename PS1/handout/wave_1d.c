@@ -10,17 +10,17 @@ ISA_LOG_REGISTER(wave_1d);
 // Simulation parameters: size, step count, and how often to save the state.
 static struct
 {
-    const i64 N;
-    const i64 MaxIterations;
-    const i64 SnapshotFrequency;
+    const i64 N;                 // Number of points on the wave being simulated
+    const i64 MaxIterations;     // Number of time steps of the simulation
+    const i64 SnapshotFrequency; // Frequency of the snapshots being saved to disk and used for visualization
 } SimParams = { .N = 1024, .MaxIterations = 4000, .SnapshotFrequency = 10 };
 
 // Wave equation parameters, time step is derived from the space step.
 static struct
 {
-    const f64 c;
-    const f64 dx;
-    f64       dt;
+    const f64 c;  // Celinity
+    const f64 dx; // Space step
+    f64       dt; // Time step (dt <= dx/c)
 } WaveEquationParams = { .c = 1.0, .dx = 1.0 };
 
 // Buffers for three time steps, indexed with 2 ghost points for the boundary.
@@ -63,10 +63,9 @@ DomainInitialize(isa_arena *Arena)
         f64 Point = cos(M_PI * ((f64)i / (f64)SimParams.N));
         UPrev(i)  = Point;
         UCurr(i)  = Point;
-        // UNext(i) = Point; ???
     }
 
-    WaveEquationParams.dt = WaveEquationParams.c / WaveEquationParams.dx; //???
+    WaveEquationParams.dt = WaveEquationParams.dx / WaveEquationParams.c; //???
 }
 
 // TASK T2:
@@ -131,9 +130,14 @@ Integrate(i64 i)
 // TASK: T5
 // Neumann (reflective) boundary condition.
 // BEGIN: T5
-void
-NeumannBoundary(void)
+void inline NeumannBoundaryStart(void)
 {
+    UCurr(-1) = UCurr(1);
+}
+
+void inline NeumannBoundaryEnd(void)
+{
+    UCurr(SimParams.N) = UCurr(SimParams.N - 2);
 }
 // END: T5
 
@@ -144,14 +148,25 @@ Simulate(void)
 {
     // BEGIN: T6
     i64 Iteration = 0;
-    DomainSave(Iteration / SimParams.SnapshotFrequency);
-
-#if 0
+    for(; Iteration < SimParams.MaxIterations; ++Iteration)
     {
-        printf("%f %s", NewUNext, (i % 10 == 0) ? "\n" : "");
-    }
-#endif
+        DomainSave(Iteration / SimParams.SnapshotFrequency);
+        for(int i = 0; i < SimParams.N; ++i)
+        {
+            if(i == 0)
+            {
+                NeumannBoundaryStart();
+            }
+            else if(i == SimParams.N - 1)
+            {
+                NeumannBoundaryEnd();
+            }
+            UNext(i) = Integrate(i);
+        }
 
+        PerformTimeStep();
+    }
+    DomainSave(Iteration / SimParams.SnapshotFrequency);
     // END: T6
 }
 
