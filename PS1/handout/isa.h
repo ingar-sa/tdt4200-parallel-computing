@@ -153,7 +153,7 @@ Isa__FormatTimePosix__(char *__restrict Buffer, u64 BufferRemaining)
     time(&PosixTime);
     localtime_r(&PosixTime, &TimeInfo);
 
-    u64 CharsWritten = strftime(Buffer, BufferRemaining, "%T: ", &TimeInfo);
+    i64 CharsWritten = strftime(Buffer, BufferRemaining, "%T: ", &TimeInfo);
 
     return (0 == CharsWritten) ? -1 : CharsWritten;
 }
@@ -165,8 +165,8 @@ i64
 Isa__WriteLog__(isa__log_module__ *Module, const char *LogLevel, va_list VaArgs)
 {
     u64 BufferRemaining = Module->BufferSize;
-    u64 CharsWritten    = FormatTime(Module->Buffer, BufferRemaining);
-    if((CharsWritten < 0) || (CharsWritten >= BufferRemaining))
+    i64 CharsWritten    = FormatTime(Module->Buffer, BufferRemaining);
+    if((CharsWritten < 0) || ((u64)CharsWritten >= BufferRemaining))
     {
         return -1;
     }
@@ -197,7 +197,7 @@ Isa__WriteLog__(isa__log_module__ *Module, const char *LogLevel, va_list VaArgs)
     else
     {
         CharsWritten += Ret;
-        if(CharsWritten < (Module->BufferSize - 1))
+        if((u64)CharsWritten < (Module->BufferSize - 1))
         {
             Module->Buffer[CharsWritten]     = '\n';
             Module->Buffer[CharsWritten + 1] = '\0';
@@ -507,7 +507,7 @@ IsaArenaGetPos(isa_arena *Arena)
 void
 IsaArenaSeek(isa_arena *Arena, u64 Pos)
 {
-    assert(0 <= Pos && Pos <= Arena->Cap);
+    assert(Pos <= Arena->Cap);
     Arena->Cur = Pos;
 }
 

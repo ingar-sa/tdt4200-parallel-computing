@@ -34,7 +34,7 @@ static struct
 #define UNext(i) TimeSteps.NextStep[(i) + 1]
 
 // Save the present time step in a numbered file under 'data/'.
-void
+static void
 DomainSave(i64 Step)
 {
     char Filename[256];
@@ -47,7 +47,7 @@ DomainSave(i64 Step)
 // TASK: T1
 // Set up our three buffers, fill two with an initial cosine wave,
 // and set the time step.
-void
+static void
 DomainInitialize(isa_arena *Arena)
 {
     TimeSteps.PrevStep = IsaPushArray(Arena, f64, SimParams.WavePointsCount + 2);
@@ -67,7 +67,7 @@ DomainInitialize(isa_arena *Arena)
 // TASK T2:
 // Return the memory to the OS.
 // BEGIN: T2
-void
+static void
 DomainFinalize(void)
 {
     /*
@@ -87,7 +87,7 @@ DomainFinalize(void)
 // TASK: T3
 // Rotate the time step buffers.
 // BEGIN: T3
-void
+static void
 PerformTimeStep(void)
 {
     // Simply rotate the pointers. No need to copy data.
@@ -101,7 +101,7 @@ PerformTimeStep(void)
 // TASK: T4
 // Derive step t+1 from steps t and t-1.
 // BEGIN: T4
-inline f64
+static inline f64
 Integrate(i64 i)
 {
     // Formula U(t+1, i) = -U(t-1, i) + 2*U(t, i) + [((dt^2 * c^2)/(h^2=dx^2) * (U(t, i-1) + U(t, i+1) - 2*U(t, i))]
@@ -136,7 +136,7 @@ Integrate(i64 i)
 
 // TASK: T6
 // Main time integration.
-void
+static void
 Simulate(void)
 {
     // BEGIN: T6
