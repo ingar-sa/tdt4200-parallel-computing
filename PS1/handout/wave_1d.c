@@ -5,26 +5,23 @@
 #include <stdlib.h>
 #include <string.h>
 
-ISA_LOG_REGISTER(wave_1d);
-
-// Simulation parameters: size, step count, and how often to save the state.
 static struct
 {
-    const i64 N;                 // Number of points on the wave being simulated
-    const i64 MaxIterations;     // Number of time steps of the simulation
+    const i64 WavePointsCount;   // Number of points on the wave being simulated
+    const i64 MaxIterations;     // Number of time steps for the simulation
     const i64 SnapshotFrequency; // Frequency of the snapshots being saved to disk and used for visualization
-} SimParams = { .N = 1024, .MaxIterations = 4000, .SnapshotFrequency = 10 };
+} SimParams = { .WavePointsCount = 1024, .MaxIterations = 4000, .SnapshotFrequency = 10 };
 
 // Wave equation parameters, time step is derived from the space step.
 static struct
 {
-    const f64 c;  // Celinity
+    const f64 c;  // Celerity
     const f64 dx; // Space step
     f64       dt; // Time step (dt <= dx/c)
 } WaveEquationParams = { .c = 1.0, .dx = 1.0 };
 
 // Buffers for three time steps, indexed with 2 ghost points for the boundary.
-// Each buffer contains all of the values for the entire wave at that time step
+// Each buffer contains values for all of the points on the wave for that time step
 static struct
 {
     f64 *PrevStep;
@@ -43,7 +40,7 @@ DomainSave(i64 Step)
     char Filename[256];
     sprintf(Filename, "data/%.5ld.dat", Step);
     FILE *Out = fopen(Filename, "wb");
-    fwrite(&UCurr(0), sizeof(f64), SimParams.N, Out);
+    fwrite(&UCurr(0), sizeof(f64), SimParams.WavePointsCount, Out);
     fclose(Out);
 }
 
@@ -53,19 +50,18 @@ DomainSave(i64 Step)
 void
 DomainInitialize(isa_arena *Arena)
 {
-    // +2 for the ghost points (???)
-    TimeSteps.PrevStep = IsaPushArray(Arena, f64, SimParams.N + 2);
-    TimeSteps.CurrStep = IsaPushArray(Arena, f64, SimParams.N + 2);
-    TimeSteps.NextStep = IsaPushArray(Arena, f64, SimParams.N + 2);
+    TimeSteps.PrevStep = IsaPushArray(Arena, f64, SimParams.WavePointsCount + 2);
+    TimeSteps.CurrStep = IsaPushArray(Arena, f64, SimParams.WavePointsCount + 2);
+    TimeSteps.NextStep = IsaPushArray(Arena, f64, SimParams.WavePointsCount + 2);
 
-    for(int i = 0; i < SimParams.N; ++i)
+    for(int i = 0; i < SimParams.WavePointsCount; ++i)
     {
-        f64 Point = cos(M_PI * ((f64)i / (f64)SimParams.N));
+        f64 Point = cos(M_PI * ((f64)i / (f64)SimParams.WavePointsCount));
         UPrev(i)  = Point;
         UCurr(i)  = Point;
     }
 
-    WaveEquationParams.dt = WaveEquationParams.dx / WaveEquationParams.c; //???
+    WaveEquationParams.dt = WaveEquationParams.dx / WaveEquationParams.c;
 }
 
 // TASK T2:
@@ -74,16 +70,16 @@ DomainInitialize(isa_arena *Arena)
 void
 DomainFinalize(void)
 {
-
     /*
      * Since I use an arena allocator, and its memory is
      * alive for the entire program, this step is unnecessary.
      * Explicitly freeing memory that will live for the entire
-     * program is also redundant since it will be reclaimed by the
-     * OS when the process exits regardless. If there are security
-     * concerns, then explicityly clearing the memory before the
-     * program is finished could be done, but the OS *should*
-     * do this as well.
+     * program is redundant since it will be reclaimed by the
+     * OS when the process exits. If the memory only lives
+     * for part of the program's lifetime, then freeing it is necessary.
+     * If there are security concerns, then explicityly clearing the
+     * memory to 0 before the process finished can be done,
+     * but the OS *should* do this as well.
      */
 
 } // END: T2
@@ -98,7 +94,7 @@ PerformTimeStep(void)
     f64 *PrevStep      = TimeSteps.PrevStep;
     TimeSteps.PrevStep = TimeSteps.CurrStep;
     TimeSteps.CurrStep = TimeSteps.NextStep;
-    TimeSteps.NextStep = PrevStep;
+    TimeSteps.NextStep = PrevStep; // Existing values will be overwritten the next timestep
 }
 // END: T3
 
@@ -120,8 +116,8 @@ Integrate(i64 i)
     UCurrNextPoint = UCurr(i + 1);
     UPrev          = UPrev(i);
 
-    NewUNext = -UPrev + 2 * UCurrThisPoint
-             + (((dt * dt * c * c) / (dx * dx)) * (UCurrPrevPoint + UCurrNextPoint - 2 * UCurrThisPoint));
+    NewUNext = -UPrev + (2 * UCurrThisPoint)
+             + (((dt * dt * c * c) / (dx * dx)) * (UCurrPrevPoint + UCurrNextPoint - (2 * UCurrThisPoint)));
 
     return NewUNext;
 }
@@ -130,15 +126,12 @@ Integrate(i64 i)
 // TASK: T5
 // Neumann (reflective) boundary condition.
 // BEGIN: T5
-void inline NeumannBoundaryStart(void)
-{
-    UCurr(-1) = UCurr(1);
-}
 
-void inline NeumannBoundaryEnd(void)
-{
-    UCurr(SimParams.N) = UCurr(SimParams.N - 2);
-}
+// Since the boundary condition functions are single statements
+// I've decided to use macros instead of functions to guarantee inlining.
+// This is explained further in question 1 in the answers to the theory questions.
+#define NeumannBoundaryStart() UCurr(-1) = UCurr(1)
+#define NeumannBoundaryEnd()   UCurr(SimParams.WavePointsCount) = UCurr(SimParams.WavePointsCount - 2)
 // END: T5
 
 // TASK: T6
@@ -151,13 +144,13 @@ Simulate(void)
     for(; Iteration < SimParams.MaxIterations; ++Iteration)
     {
         DomainSave(Iteration / SimParams.SnapshotFrequency);
-        for(int i = 0; i < SimParams.N; ++i)
+        for(int i = 0; i < SimParams.WavePointsCount; ++i)
         {
-            if(i == 0)
+            if(0 == i)
             {
                 NeumannBoundaryStart();
             }
-            else if(i == SimParams.N - 1)
+            else if(i == (SimParams.WavePointsCount - 1))
             {
                 NeumannBoundaryEnd();
             }
@@ -166,6 +159,7 @@ Simulate(void)
 
         PerformTimeStep();
     }
+
     DomainSave(Iteration / SimParams.SnapshotFrequency);
     // END: T6
 }

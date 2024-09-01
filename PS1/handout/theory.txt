@@ -1,0 +1,40 @@
+1)
+Using the macros for accessing the elements of the buffers, as opposed to using functions or writing the array accesses explicitly, has several pros and cons.
+
+Pros:
+In the original code the buffers were not named, so writing the accesses explicitly would not provide any information about what the buffers are used for.
+The macros provide this information by virtue of being named.
+
+When using macros inlining is guaranteed since they are simply text replacements performed by the preprocessor before the compiler runs.
+Functions, on the other hand, are not guaranteed to be inlined by the compiler (though a simple array access probably would be). In computationally
+heavy scenarios like simulations, the functions not being inlined could cause a significant performance drop since there would be function calls
+for every array access.
+
+Cons:
+Macros lack most of the error and warning handling that can be performed on functions, which can make them difficult to debug. 
+If an error or warning is caused by a macro they will appear where the macro was used, not at the macro definition. 
+If a macro consist of multiple statements this can be especially problematic, since the expanded macro will not be shown (in most editors),
+limiting the programmer's ability to see what caused the problem. For simple, single-statement macros, like the ones in this program, 
+this is not too big of an issue.
+
+2)
+1. Dirichlet boundary condition:
+    Specifies a fixed value for each end's ghost point.
+    Works well for modeling waves propagating though a string fixed at both ends, for example.
+
+2. Periodic boundary condition:
+    Connects the ends of the simulation domain, creating a loop.
+    Works well for modeling a circular domain or periodic phenomena.
+
+3)
+The buffers initially have a value of NULL. When they are used, it would be a null pointer
+dereference, which will cause a segmentation fault (UNIX) or access violation (Windows).
+
+4)
+1.  float const *a is a pointer to a const float.
+    You cannot dereference a and assign it a new value:
+        *a = 3.14; will cause an error.
+
+2.  float *const a is a const pointer to a float.
+    You cannot assign a a new value:
+        a = &other_float; will cause an error.
