@@ -1,0 +1,18 @@
+For the solution of allowing users to download games
+we need to choose hw that can handle a lot of writes.
+If hdds -> defrag routinely
+
+Research: windows sandbox enviornment with high fault tolerance
+    - Must restart on unexpected events, such as power cuts
+    - Must reliably save data (dumping application memory to disk routinely, time-stamped)
+    - Atomic operations to prevent inconsistent states
+    - Must properly sandbox user from exiting environment (disabling task manager acces, prevent start of unauthorized programs (console, e.g.), etc.)
+    - Encrypt telemetry and other relevant network traffic
+    - Remote access for admins
+    - Kernel hacks prevention
+    - Safe driver/program/os updates (probably has to be tested by us then initiate remote update when we are confident it will not fail. Standardized hw will help with this.)
+    - Reject unkown i/o devices (best way would be to physically block access, but sw prevention should be in place just in case, and also for attempts at connecting wirelessly.)
+        - Even unkown hw, in case someone gains physical access to the machine, opens it and adds a disk or something else.
+    - Users must be able to submit feedback, such as when errors occurr. e.g. if sw updates are necessary to run something.
+    - If an unrecoverable error occurrs, such as a program hanging, user must be able to perform some action, e.g. restart sandbox
+    - 
