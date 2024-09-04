@@ -1,0 +1,36 @@
+Distributed memory system:\
+
+    CPU1/Mem1 | CPU2/Mem2 | ... |CPUn/Memn
+        |           |               |
+        -------Interconnect----------
+                    
+
+Shared memory system:
+
+    CPU1 | CPU2 | ... |CPUn
+     |      |           |
+     ---Interconnect-----
+            |
+       Shared memory
+
+
+MPI is SPMD (single program multiple data), since there is only one program that is compiled and run, even though it spawns multiple processes.
+
+Block partition: each process gets its own, non-overlapping block of the data to work on.
+Cyclic partition: a round-robin distribution. P1 gets 1, P2 gets 2, and so on until all processes have work, then P1 gets PN's value plus + 1, etc.
+Block-cyclic partion: same as cyclic, but with a block of values instead of single values. P1 gets 1,2, P2 gets 3,4 and so on.
+In MPI it's easiset to use block partitioning.
+
+In distributed memory system's communication is typically much more expensive (in terms of time) than internal computation.
+Can use derived types in MPI to help aggregate data to send in bulk.
+
+Speedup is the ration S(n, p) = T_serial(n) / T_parallel(n, p), where n is the size of the problem and p is the number of processors used.
+It indicates how much the parallelized program decreased the runtime over the serial program.
+Efficiency is speedup per extra processor used: E(n, p) = S(n, p) / p = T_serial(n)/(p * T_parallel(n, p)).
+Scalability is the property that the problem size can be increased at a rate so that the efficiency doesn't decrease with an increase in the number of processors used.
+The scalability definition is poor. If program A has a constant efficiency, regardless of problem size, whereas program B one must also increase the processor count 
+with an increase in problem size to maintain constant efficiency, both programs are scalable by the above definition, but program A is more scalable than program B.
+Programs that maintain constant efficiency without increasing the problem size are called stroncgly scalable, whereas programs that maintain constant efficiency if
+the problem size increases at the same rate as the number of processors are called weakly scalable.
+
+A program that relies on MPI buffering (of data) to work correctly is called unsafe, since it could end up hanging/deadlocking on ceratin inputs.
