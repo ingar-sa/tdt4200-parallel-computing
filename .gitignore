@@ -138,3 +138,6 @@ Thumbs.db
 Peter*
 errata.pdf
 *.zip
+
+**/data
+**/images
