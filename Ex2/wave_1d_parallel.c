@@ -36,9 +36,9 @@ typedef struct
     // TODO(ingar): These two might not be needed
     i64 StartingCell;
     i64 EndingCell;
-} mpi_params;
+} mpi_ctx;
 
-static mpi_params MpiParams = {};
+static mpi_ctx MpiCtx = {};
 // END: T1b
 
 // Simulation parameters: size, step count, and how often to save the state.
@@ -102,40 +102,40 @@ InitializeDomain(void)
 {
     // BEGIN: T3
     // TODO(ingar): Verify that giving the remainder of the cells to the final rank works/is correct
-    MpiParams.CellsPerRank   = (SimParams.NCells / MpiParams.CommSize);
-    MpiParams.RemainingCells = SimParams.NCells % MpiParams.CommSize;
-    if(MpiParams.IAmRootRank)
+    MpiCtx.CellsPerRank   = SimParams.NCells / (MpiCtx.CommSize - 1);
+    MpiCtx.RemainingCells = SimParams.NCells % (MpiCtx.CommSize - 1);
+    if(MpiCtx.IAmRootRank)
     {
-        MpiParams.NMyCells = SimParams.NCells;
+        MpiCtx.NMyCells = SimParams.NCells;
         // TODO(ingar): Verify that this works / move root's buffer for itself?
         TimeSteps.CurrStep = malloc((SimParams.NCells + 2) * sizeof(f64));
         return;
     }
-    else if(MpiParams.IAmLastRank)
+    else if(MpiCtx.IAmLastRank)
     {
-        MpiParams.NMyCells = MpiParams.CellsPerRank + MpiParams.RemainingCells;
+        MpiCtx.NMyCells = MpiCtx.CellsPerRank + MpiCtx.RemainingCells;
     }
     else
     {
-        MpiParams.NMyCells = MpiParams.CellsPerRank;
+        MpiCtx.NMyCells = MpiCtx.CellsPerRank;
     }
 
-    TimeSteps.PrevStep = malloc((MpiParams.NMyCells + 2) * sizeof(f64));
-    TimeSteps.CurrStep = malloc((MpiParams.NMyCells + 2) * sizeof(f64));
-    TimeSteps.NextStep = malloc((MpiParams.NMyCells + 2) * sizeof(f64));
+    TimeSteps.PrevStep = malloc((MpiCtx.NMyCells + 2) * sizeof(f64));
+    TimeSteps.CurrStep = malloc((MpiCtx.NMyCells + 2) * sizeof(f64));
+    TimeSteps.NextStep = malloc((MpiCtx.NMyCells + 2) * sizeof(f64));
 
     // TODO(ingar): This might only be usefule here
-    MpiParams.StartingCell = (MpiParams.MyRank - 1) * MpiParams.CellsPerRank;
-    MpiParams.EndingCell   = MpiParams.StartingCell + MpiParams.NMyCells;
+    MpiCtx.StartingCell = (MpiCtx.MyRank - 1) * MpiCtx.CellsPerRank;
+    MpiCtx.EndingCell   = MpiCtx.StartingCell + MpiCtx.NMyCells;
 
     // NOTE(ingar): We must offset i to the correct part of the entire domain for the initialization
     // values to be correct
-    for(i64 i = MpiParams.StartingCell; i < MpiParams.EndingCell; ++i)
+    for(i64 i = MpiCtx.StartingCell; i < MpiCtx.EndingCell; ++i)
     {
         f64 Point = cos(M_PI * i / (f64)SimParams.NCells);
 
-        UPrev(i - MpiParams.StartingCell) = Point;
-        UCurr(i - MpiParams.StartingCell) = Point;
+        UPrev(i - MpiCtx.StartingCell) = Point;
+        UCurr(i - MpiCtx.StartingCell) = Point;
     }
     // END: T3
 
@@ -158,11 +158,13 @@ domain_finalize(void)
 static inline void
 RotateBuffers(void)
 {
-    // TODO(ingar): WILL NOT WORK FOR THE ROOT!!!
-    f64 *PrevStep      = TimeSteps.PrevStep;
-    TimeSteps.PrevStep = TimeSteps.CurrStep;
-    TimeSteps.CurrStep = TimeSteps.NextStep;
-    TimeSteps.NextStep = PrevStep; // Existing values will be overwritten the next timestep
+    if(!MpiCtx.IAmRootRank)
+    {
+        f64 *PrevStep      = TimeSteps.PrevStep;
+        TimeSteps.PrevStep = TimeSteps.CurrStep;
+        TimeSteps.CurrStep = TimeSteps.NextStep;
+        TimeSteps.NextStep = PrevStep; // Existing values will be overwritten the next timestep
+    }
 }
 
 // TASK: T4
@@ -174,7 +176,7 @@ PerformTimeStep(void)
     f64 c  = WaveEquationParams.c;
     f64 dx = WaveEquationParams.dx;
 
-    for(i64 i = 0; i < MpiParams.NMyCells; ++i)
+    for(i64 i = 0; i < MpiCtx.NMyCells; ++i)
     {
         UNext(i) = -UPrev(i) + 2.0 * UCurr(i)
                  + (dt * dt * c * c) / (dx * dx) * (UCurr(i - 1) + UCurr(i + 1) - 2.0 * UCurr(i));
@@ -183,48 +185,55 @@ PerformTimeStep(void)
 
 // TASK: T6
 // Neumann (reflective) boundary condition.
-void
+static inline void
 PerformBoundaryCondition(void)
 {
     // BEGIN: T6
-    UCurr(-1)               = UCurr(1);
-    UCurr(SimParams.NCells) = UCurr(SimParams.NCells - 2);
+    if(MpiCtx.IAmFirstRank)
+    {
+        UCurr(-1) = UCurr(1);
+    }
+    else if(MpiCtx.IAmLastRank)
+    {
+        UCurr(SimParams.NCells) = UCurr(SimParams.NCells - 2);
+    }
     // END: T6
 }
 
 // TASK: T5
 // Communicate the border between processes.
-void
+static inline void
 PerformBorderExchange(void)
 {
     // BEGIN: T5
-
-    if(MpiParams.IAmFirstRank)
+    // NOTE(ingar): To ensure that the program doesn't hang, the border exchange goes from left to
+    // right. The first rank starts by sending, all other ranks start with receiving. Once a rank
+    // has received the value from its left neighbor, it sends its value to it. It then sends its
+    // value to its right neighbor, and, finally, receives from its right neighbor. The exceptions
+    // are the first and last rank, which only exchange to the right and to the left, respectively.
+    if(!MpiCtx.IAmRootRank)
     {
-        f64 *BorderSend = TimeSteps.CurrStep + MpiParams.NMyCells;
-        MPI_Send(BorderSend, 1, MPI_DOUBLE, MpiParams.MyRank + 1, 0, MPI_COMM_WORLD);
-    }
-    else if(MpiParams.IAmLastRank)
-    {
-        f64 *BorderRecv = TimeSteps.CurrStep;
-        MPI_Recv(BorderRecv, 1, MPI_DOUBLE, MpiParams.MyRank - 1, 0, MPI_COMM_WORLD,
-                 MPI_STATUS_IGNORE);
-    }
-    else
-    {
-        f64 *LeftBorderSend = &UCurr(0);
-        MPI_Send(LeftBorderSend, 1, MPI_DOUBLE, MpiParams.MyRank + 1, 0, MPI_COMM_WORLD);
+        // NOTE(ingar): The first rank has no neighbor to the left
+        if(!MpiCtx.IAmFirstRank)
+        {
+            f64 *LeftBorderRecv = &UCurr(-1);
+            MPI_Recv(LeftBorderRecv, 1, MPI_DOUBLE, MpiCtx.MyRank - 1, 0, MPI_COMM_WORLD,
+                     MPI_STATUS_IGNORE);
 
-        f64 *LeftBorderRecv = &UCurr(-1);
-        MPI_Recv(LeftBorderRecv, 1, MPI_DOUBLE, MpiParams.MyRank - 1, 0, MPI_COMM_WORLD,
-                 MPI_STATUS_IGNORE);
+            f64 *LeftBorderSend = &UCurr(0);
+            MPI_Send(LeftBorderSend, 1, MPI_DOUBLE, MpiCtx.MyRank - 1, 0, MPI_COMM_WORLD);
+        }
 
-        f64 *RightBorderSend = &UCurr(MpiParams.NMyCells - 1);
-        MPI_Send(RightBorderSend, 1, MPI_DOUBLE, MpiParams.MyRank + 1, 0, MPI_COMM_WORLD);
+        // NOTE(ingar): The last rank has no neighbor to the right
+        if(!MpiCtx.IAmLastRank)
+        {
+            f64 *RightBorderSend = &UCurr(MpiCtx.NMyCells - 1);
+            MPI_Send(RightBorderSend, 1, MPI_DOUBLE, MpiCtx.MyRank + 1, 0, MPI_COMM_WORLD);
 
-        f64 *RightBorderRecv = &UCurr(MpiParams.NMyCells);
-        MPI_Recv(RightBorderRecv, 1, MPI_DOUBLE, MpiParams.MyRank - 1, 0, MPI_COMM_WORLD,
-                 MPI_STATUS_IGNORE);
+            f64 *RightBorderRecv = &UCurr(MpiCtx.NMyCells);
+            MPI_Recv(RightBorderRecv, 1, MPI_DOUBLE, MpiCtx.MyRank + 1, 0, MPI_COMM_WORLD,
+                     MPI_STATUS_IGNORE);
+        }
     }
 
     // END: T5
@@ -237,7 +246,7 @@ void
 SendDataToRoot()
 {
     // BEGIN: T7
-    ;
+
     // END: T7
 }
 
@@ -282,11 +291,11 @@ main(int ArgCount, char **ArgV)
     }
 
     // TODO(ingar): Verify that this is correct
-    MpiParams.MyRank       = MyRank;
-    MpiParams.CommSize     = CommSize;
-    MpiParams.IAmRootRank  = MyRank == 0;
-    MpiParams.IAmFirstRank = MyRank == 1;
-    MpiParams.IAmLastRank  = MyRank == (CommSize - 1);
+    MpiCtx.MyRank       = MyRank;
+    MpiCtx.CommSize     = CommSize;
+    MpiCtx.IAmRootRank  = MyRank == 0;
+    MpiCtx.IAmFirstRank = MyRank == 1;
+    MpiCtx.IAmLastRank  = MyRank == (CommSize - 1);
 
     // END: T1c
 
@@ -305,16 +314,18 @@ main(int ArgCount, char **ArgV)
     // TODO(ingar): Only rank 0 should perform the timing, since we're interested in the time the
     // entire simulation takes, not how long each process uses for its slice of it. I don't think we
     // need to synchronize the ranks by using barriers in this case, but I'm unsure
-    if(MpiParams.IAmRootRank)
+    if(MpiCtx.IAmRootRank)
     {
         TimeStart = MPI_Wtime();
     }
     else
     {
+        // TODO(ingar): Does the root rank need to do the simulation? I don't think so, which means
+        // all of the logic for handling the root in the procedures used in simulate is unnecessary
         Simulate();
     }
 
-    if(MpiParams.IAmRootRank)
+    if(MpiCtx.IAmRootRank)
     {
         TimeEnd = MPI_Wtime();
     }
