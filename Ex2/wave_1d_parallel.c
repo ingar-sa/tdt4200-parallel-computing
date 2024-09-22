@@ -312,7 +312,7 @@ Simulate(void)
     SdbLogDebug("Hello from rank %ld in Simulate!\n", MpiCtx.MyRank);
 
     for(i64 Iteration = 0; Iteration <= SimParams.NTimeSteps; ++Iteration) {
-        if(0 == (Iteration % SimParams.SnapshotFrequency)) {
+        if(false && 0 == (Iteration % SimParams.SnapshotFrequency)) {
             SdbLogDebug("Iteration %ld\n", Iteration);
             if(MpiCtx.NChildren > 0) {
                 SendDataToRoot();

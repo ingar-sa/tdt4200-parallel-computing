@@ -65,8 +65,7 @@ InitializeDomain(void)
     buffers[1] = malloc((N + 2) * sizeof(real_t));
     buffers[2] = malloc((N + 2) * sizeof(real_t));
 
-    for(int_t i = 0; i < N; i++)
-    {
+    for(int_t i = 0; i < N; i++) {
         U_prv(i) = U(i) = cos(M_PI * i / (real_t)N);
     }
     // END: T3
@@ -77,7 +76,7 @@ InitializeDomain(void)
 
 // Return the memory to the OS.
 void
-domain_finalize(void)
+FinalizeDomain(void)
 {
     free(buffers[0]);
     free(buffers[1]);
@@ -100,8 +99,7 @@ void
 time_step(void)
 {
     // BEGIN: T4
-    for(int_t i = 0; i < N; i++)
-    {
+    for(int_t i = 0; i < N; i++) {
         U_nxt(i) = -U_prv(i) + 2.0 * U(i)
                  + (dt * dt * c * c) / (dx * dx) * (U(i - 1) + U(i + 1) - 2.0 * U(i));
     }
@@ -145,10 +143,8 @@ void
 Simulate(void)
 {
     // Go through each time step.
-    for(int_t iteration = 0; iteration <= max_iteration; iteration++)
-    {
-        if((iteration % snapshot_freq) == 0)
-        {
+    for(int_t iteration = 0; iteration <= max_iteration; iteration++) {
+        if((iteration % snapshot_freq) == 0) {
             SendDataToRoot();
             SaveDomain(iteration / snapshot_freq);
         }
@@ -181,7 +177,7 @@ main(int argc, char **argv)
     Simulate();
     // END: T2
 
-    domain_finalize();
+    FinalizeDomain();
 
     // TASK: T1d
     // Finalise MPI
