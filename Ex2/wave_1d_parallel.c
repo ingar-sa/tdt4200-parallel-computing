@@ -24,6 +24,7 @@ SDB_LOG_REGISTER(Mpi1dWaveEquation);
 // TASK: T1b
 // Declare variables each MPI process will need
 // BEGIN: T1b
+
 typedef struct
 {
     i64 MyRank;
@@ -232,10 +233,12 @@ PerformTimeStep(void)
     f64 dx = WaveEquationParams.dx;
 
     SdbLogDebug("Hello from rank %ld in PerformTimeStep!\n", MpiCtx.MyRank);
-    for(i64 i = 0; i < MpiCtx.NMyCells; ++i) {
+    i64 i = 0;
+    for(; i < MpiCtx.NMyCells; ++i) {
         UNext(i) = -UPrev(i) + 2.0 * UCurr(i)
                  + (dt * dt * c * c) / (dx * dx) * (UCurr(i - 1) + UCurr(i + 1) - 2.0 * UCurr(i));
     }
+    SdbLogDebug("Rank %ld performed %ld calculations", MpiCtx.MyRank, i);
 }
 
 // TASK: T6
@@ -273,7 +276,6 @@ PerformBorderExchange(void)
                      MpiCtx.MyRank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
 
-    // Right exchange
     if(!MpiCtx.IAmLastRank) {
         MPI_Sendrecv(&UCurr(MpiCtx.NMyCells - 1), 1, MPI_DOUBLE, MpiCtx.MyRank + 1, 0,
                      &UCurr(MpiCtx.NMyCells), 1, MPI_DOUBLE, MpiCtx.MyRank + 1, 0, MPI_COMM_WORLD,
@@ -312,7 +314,7 @@ Simulate(void)
     SdbLogDebug("Hello from rank %ld in Simulate!\n", MpiCtx.MyRank);
 
     for(i64 Iteration = 0; Iteration <= SimParams.NTimeSteps; ++Iteration) {
-        if(false && 0 == (Iteration % SimParams.SnapshotFrequency)) {
+        if(0 == (Iteration % SimParams.SnapshotFrequency)) {
             SdbLogDebug("Iteration %ld\n", Iteration);
             if(MpiCtx.NChildren > 0) {
                 SendDataToRoot();
@@ -332,7 +334,7 @@ Simulate(void)
             PerformBoundaryCondition();
         }
 
-        if(!(MpiCtx.IAmRootRank && MpiCtx.ThereIsOneChild)) {
+        if(!(MpiCtx.IAmRootRank && MpiCtx.NChildren >= 1)) {
             PerformTimeStep();
         }
 
@@ -404,9 +406,8 @@ main(int ArgCount, char **ArgV)
                            MpiCtx.RecvCounts[i], MpiCtx.Displacements[i]);
             }
 #endif
+            // PrintAllMpiContexts();
         }
-
-        // PrintAllMpiContexts();
     } else {
         // NOTE(ingar): Program is run with only root rank, so we don't need to do all of
         // the above stuff
@@ -446,7 +447,7 @@ main(int ArgCount, char **ArgV)
     MPI_Barrier(MPI_COMM_WORLD);
     if(MpiCtx.IAmRootRank) {
         TimeEnd = MPI_Wtime();
-        SdbLogInfo("Simulation time: %f", TimeEnd - TimeStart);
+        printf("Simulation time: %f", TimeEnd - TimeStart);
     }
 
     // END: T2
