@@ -1,0 +1,3 @@
+# m=rows, n=cols, i=max_iterations, s=snapshot_frequency
+mpiexec -n 4 ./parallel -m 256 -n 256 -i 4000 -s 20
+./plotimage.sh -m 256 -n 256
