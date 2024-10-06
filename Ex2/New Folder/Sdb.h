@@ -15,6 +15,8 @@
 #define sdb_persist  static
 #define sdb_global   static
 
+// TODO(ingar): Add support for custom errno codes
+/* 0 is defined as success; negative errno code otherwise. */
 typedef int_least32_t sdb_errno;
 
 typedef uint8_t  u8;
@@ -27,6 +29,8 @@ typedef int16_t i16;
 typedef int32_t i32;
 typedef int64_t i64;
 
+// NOTE(ingar): DO NOT USE THESE OUTSIDE OF THIS FILE! Since we are working with embedded systems
+// floats and doubles may not necessarily be 32-bit and 64-bit respectively
 typedef float  f32;
 typedef double f64;
 
@@ -85,6 +89,7 @@ Sdb__WriteLog__(sdb__log_module__ *Module, const char *LogLevel, va_list VaArgs)
 
     int FormatRet = strftime(Module->Buffer, BufferRemaining, "%T: ", &TimeInfo);
     if(0 == FormatRet) {
+        // NOTE(ingar): Since the buffer size is at least 128, this should never happen
         assert(FormatRet);
         return -ENOMEM;
     }
@@ -97,6 +102,8 @@ Sdb__WriteLog__(sdb__log_module__ *Module, const char *LogLevel, va_list VaArgs)
     if(FormatRet < 0) {
         return -errno;
     } else if((u64)FormatRet >= BufferRemaining) {
+        // NOTE(ingar): If the log module name is so long that it does not fit in 128 bytes - the
+        // time stamp, it should be changed
         assert(FormatRet);
         return -ENOMEM;
     }

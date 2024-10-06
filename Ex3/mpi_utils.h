@@ -6,14 +6,14 @@
 static void
 print_mpi_context(const MpiCtx *context)
 {
-    printf("My rank: %ld\n", context->my_rank);
+    printf("My rank: %ld\n", context->rank);
     printf("Commsize: %ld\n", context->commsize);
-    printf("N children: %ld\n", context->n_children);
+    printf("N children: %ld\n", context->n_workers);
     printf("I am root rank: %s\n", context->i_am_root_rank ? "true" : "false");
     printf("I am first rank: %s\n", context->i_am_first_rank ? "true" : "false");
     printf("I am last rank: %s\n", context->i_am_last_rank ? "true" : "false");
-    printf("I am o: %s\n", context->i_am_only_child ? "true" : "false");
-    printf("ThereIsOneChild: %s\n", context->there_is_one_child ? "true" : "false");
+    printf("I am o: %s\n", context->i_am_only_worker ? "true" : "false");
+    printf("ThereIsOneChild: %s\n", context->there_is_one_worker ? "true" : "false");
     printf("CellsPerRank: %ld\n", context->cells_per_rank);
     printf("RemainingCells: %ld\n", context->remaining_cells);
     printf("NMyCells: %ld\n", context->n_my_cells);
@@ -29,12 +29,12 @@ print_all_mpi_contexts(MpiCtx *mpi_ctx)
     int          n_struct_members = 13; // - RecvCounts and Displacements
     int          member_blocks[]  = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };
     MPI_Aint     member_displacements[]
-        = { offsetof(MpiCtx, my_rank),         offsetof(MpiCtx, commsize),
-            offsetof(MpiCtx, n_children),      offsetof(MpiCtx, i_am_root_rank),
-            offsetof(MpiCtx, i_am_first_rank), offsetof(MpiCtx, i_am_last_rank),
-            offsetof(MpiCtx, i_am_only_child), offsetof(MpiCtx, there_is_one_child),
-            offsetof(MpiCtx, cells_per_rank),  offsetof(MpiCtx, remaining_cells),
-            offsetof(MpiCtx, n_my_cells),      offsetof(MpiCtx, recv_counts),
+        = { offsetof(MpiCtx, world_rank),       offsetof(MpiCtx, commsize),
+            offsetof(MpiCtx, n_workers),        offsetof(MpiCtx, i_am_root_rank),
+            offsetof(MpiCtx, i_am_first_rank),  offsetof(MpiCtx, i_am_last_rank),
+            offsetof(MpiCtx, i_am_only_worker), offsetof(MpiCtx, there_is_one_worker),
+            offsetof(MpiCtx, cells_per_rank),   offsetof(MpiCtx, remaining_cells),
+            offsetof(MpiCtx, n_my_cells),       offsetof(MpiCtx, recv_counts),
             offsetof(MpiCtx, displacements) };
 
     MPI_Datatype member_types[]

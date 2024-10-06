@@ -1,0 +1,157 @@
+Thsi is the code for initializng the cartesian communicator, performing the border exchange and creating the mpi datatypes and initializing the simulation domain
+bool
+on_boundary(void)
+{
+    int x_coord     = mpi_ctx.coords[1];
+    int y_coord     = mpi_ctx.coords[0];
+    int x_end_coord = mpi_ctx.cart_dims[1] - 1;
+    int y_end_coord = mpi_ctx.cart_dims[0] - 1;
+
+    bool on_boundary = false;
+    if((x_coord == 0) || (y_coord == 0) || (x_coord == x_end_coord) || (y_coord == y_end_coord)) {
+        on_boundary = true;
+    }
+
+    return on_boundary;
+}
+
+void
+cart_comm_initialize(void)
+{
+    int      n_cart_dims    = 2;
+    int      cart_dims[2]   = { 0 };
+    int      periodicity[2] = { 0 };
+    int      reorder        = 0;
+    MPI_Comm cart_comm;
+
+    MPI_Dims_create(mpi_ctx.commsize, n_cart_dims, cart_dims);
+    MPI_Cart_create(MPI_COMM_WORLD, n_cart_dims, cart_dims, periodicity, reorder, &cart_comm);
+
+    int cart_rank;
+    int coords[2];
+    MPI_Comm_rank(cart_comm, &cart_rank);
+    MPI_Cart_coords(cart_comm, cart_rank, n_cart_dims, coords);
+
+    mpi_ctx.cart_rank    = cart_rank;
+    mpi_ctx.cart_dims[0] = cart_dims[0];
+    mpi_ctx.cart_dims[1] = cart_dims[1];
+    mpi_ctx.coords[0]    = coords[0];
+    mpi_ctx.coords[1]    = coords[1];
+    mpi_ctx.cart_comm    = cart_comm;
+    mpi_ctx.on_boundary  = on_boundary();
+
+    IsaLogDebug("Process %d in MPI_COMM_WORLD is now process %d in cart_comm with coordinates "
+                "(%d, %d) is %son the boundary",
+                mpi_ctx.world_rank, cart_rank, coords[0], coords[1],
+                mpi_ctx.on_boundary ? "" : "not ");
+}
+
+void
+find_neighbors(int *north, int *south, int *east, int *west)
+{
+    MPI_Cart_shift(mpi_ctx.cart_comm, 0, 1, north, south);
+    MPI_Cart_shift(mpi_ctx.cart_comm, 1, 1, west, east);
+}
+
+// TASK: T6
+// Communicate the border between processes.
+void
+border_exchange(void)
+{
+    // BEGIN: T6
+    int north, south, east, west;
+    find_neighbors(&north, &south, &east, &west);
+    //    IsaLogDebug("Rank %d (%d, %d) has neighbors %dN, %dS, %dE, %dW", mpi_ctx.cart_rank,
+    //                mpi_ctx.coords[0], mpi_ctx.coords[1], north, south, east, west);
+    //
+    // Send top row to north, receive top row from south in bottom ghost row
+    MPI_Sendrecv(&UCurr(0, 0), 1, mpi_ctx.MpiRow, north, 0, &UCurr(sim_params.M, 0), 1,
+                 mpi_ctx.MpiRow, south, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
+
+    // Send bottom row to south, receive bottom row from north in top ghost row
+    MPI_Sendrecv(&UCurr(sim_params.M - 1, 0), 1, mpi_ctx.MpiRow, south, 0, &UCurr(-1, 0), 1,
+                 mpi_ctx.MpiRow, north, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
+
+    // Send right col to east, reveive right row from west into left ghost col
+    MPI_Sendrecv(&UCurr(0, sim_params.N - 1), 1, mpi_ctx.MpiCol, east, 0, &UCurr(0, -1), 1,
+                 mpi_ctx.MpiCol, west, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
+
+    // Send left col to west, receive left col from east into right ghost col
+    MPI_Sendrecv(&UCurr(0, 0), 1, mpi_ctx.MpiCol, west, 0, &UCurr(0, sim_params.N), 1,
+                 mpi_ctx.MpiCol, east, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
+
+    IsaLogDebug("Exhanged borders");
+    // END: T6
+}
+
+void
+mpi_types_create(void)
+{
+
+    int          block_count = sim_params.M;
+    int          block_len   = 1;
+    int          stride      = sim_params.N + 2;
+    MPI_Datatype MpiCol;
+    MPI_Type_vector(block_count, block_len, stride, MPI_DOUBLE, &MpiCol);
+    MPI_Type_commit(&MpiCol);
+    mpi_ctx.MpiCol = MpiCol;
+
+    MPI_Datatype MpiRow;
+    MPI_Type_contiguous(sim_params.N, MPI_DOUBLE, &MpiRow);
+    MPI_Type_commit(&MpiRow);
+    mpi_ctx.MpiRow = MpiRow;
+
+    MPI_Datatype MpiGrid;
+    MPI_Type_vector(sim_params.M, sim_params.N, sim_params.N + 2, MPI_DOUBLE, &MpiGrid);
+    MPI_Type_commit(&MpiGrid);
+    mpi_ctx.MpiGrid = MpiGrid;
+}
+
+void
+mpi_types_free(void)
+{
+    MPI_Type_free(&mpi_ctx.MpiCol);
+    MPI_Type_free(&mpi_ctx.MpiRow);
+    MPI_Type_free(&mpi_ctx.MpiGrid);
+}
+
+// TASK: T4
+// Set up our three buffers, and fill two with an initial perturbation
+// and set the time step.
+void
+domain_initialize(void)
+{
+    // BEGIN: T4
+    sim_params.M = sim_params.M / mpi_ctx.cart_dims[0];
+    sim_params.N = sim_params.N / mpi_ctx.cart_dims[1];
+
+    f64 c  = wave_equation_params.c;
+    f64 dx = wave_equation_params.dx;
+    f64 dy = wave_equation_params.dy;
+
+    size_t alloc_size = (sim_params.M + 2) * (sim_params.N + 2) * sizeof(f64);
+    IsaLogDebug("Allocating %zd bytes for each timestep", alloc_size);
+
+    time_steps.prev_step = malloc(alloc_size);
+    time_steps.curr_step = malloc(alloc_size);
+    time_steps.next_step = malloc(alloc_size);
+
+    // TODO(ingar): Verify that this is correct
+    i64 M_offset = sim_params.M * (mpi_ctx.coords[0] * sim_params.M);
+    i64 N_offset = sim_params.N * (mpi_ctx.coords[1] * sim_params.N);
+
+    for(i64 i = 0; i < sim_params.M; i++) {
+        for(i64 j = 0; j < sim_params.N; j++) {
+            // Calculate delta (radial distance) adjusted for M x N grid
+            f64 delta   = sqrt(((i - M_offset / 2.0) * (i - M_offset / 2.0)) / (f64)M_offset
+                               + ((j - N_offset / 2.0) * (j - N_offset / 2.0)) / (f64)N_offset);
+            UPrev(i, j) = UCurr(i, j) = exp(-4.0 * delta * delta);
+        }
+    }
+
+    // Set the time step for 2D case
+    wave_equation_params.dt = dx * dy / (c * sqrt(dx * dx + dy * dy));
+    // END: T4
+    // TODO(ingar): Remove
+}
+

@@ -8,12 +8,6 @@
 
 #include "argument_utils.h"
 
-// TASK: T1a
-// Include the MPI headerfile
-// BEGIN: T1a
-;
-// END: T1a
-
 
 // Convert 'struct timeval' into seconds in double prec. floating point
 #define WALLTIME(t) ((double)(t).tv_sec + 1e-6 * (double)(t).tv_usec)
@@ -22,23 +16,10 @@
 typedef int64_t int_t;
 typedef double real_t;
 
-
-// Buffers for three time steps, indexed with 2 ghost points for the boundary
-real_t
-    *buffers[3] = { NULL, NULL, NULL };
-
-// TASK: T1b
-// Declare variables each MPI process will need
-// BEGIN: T1b
-#define U_prv(i,j) buffers[0][((i)+1)*(N+2)+(j)+1]
-#define U(i,j)     buffers[1][((i)+1)*(N+2)+(j)+1]
-#define U_nxt(i,j) buffers[2][((i)+1)*(N+2)+(j)+1]
-// END: T1b
-
 // Simulation parameters: size, step count, and how often to save the state
 int_t
-    M = 256,    // rows
-    N = 256,    // cols
+    N = 256,
+    M = 256,
     max_iteration = 4000,
     snapshot_freq = 20;
 
@@ -50,7 +31,13 @@ const real_t
 real_t
     dt;
 
+// Buffers for three time steps, indexed with 2 ghost points for the boundary
+real_t
+    *buffers[3] = { NULL, NULL, NULL };
 
+#define U_prv(i,j) buffers[0][((i)+1)*(N+2)+(j)+1]
+#define U(i,j)     buffers[1][((i)+1)*(N+2)+(j)+1]
+#define U_nxt(i,j) buffers[2][((i)+1)*(N+2)+(j)+1]
 
 
 // Rotate the time step buffers.
@@ -63,12 +50,24 @@ void move_buffer_window ( void )
 }
 
 
-// TASK: T4
-// Set up our three buffers, and fill two with an initial perturbation
-// and set the time step.
-void domain_initialize ( void )
+// Save the present time step in a numbered file under 'data/'
+void domain_save ( int_t step )
 {
-// BEGIN: T4
+    char filename[256];
+    sprintf ( filename, "data/%.5ld.dat", step );
+    FILE *out = fopen ( filename, "wb" );
+    for ( int_t i=0; i<M; i++ )
+    {
+        fwrite ( &U(i,0), sizeof(real_t), N, out );
+    }
+    fclose ( out );
+}
+
+
+// Set up our three buffers, and fill two with an initial perturbation
+void
+domain_initialize ( void )
+{
     buffers[0] = malloc ( (M+2)*(N+2)*sizeof(real_t) );
     buffers[1] = malloc ( (M+2)*(N+2)*sizeof(real_t) );
     buffers[2] = malloc ( (M+2)*(N+2)*sizeof(real_t) );
@@ -86,7 +85,6 @@ void domain_initialize ( void )
 
     // Set the time step for 2D case
     dt = dx*dy / (c * sqrt (dx*dx+dy*dy));
-// END: T4
 }
 
 
@@ -99,11 +97,9 @@ void domain_finalize ( void )
 }
 
 
-// TASK: T5
-// Integration formula
+// Integration formula (Eq. 9 from the pdf document)
 void time_step ( void )
 {
-// BEGIN: T5
     for ( int_t i=0; i<M; i++ )
     {
         for ( int_t j=0; j<N; j++ )
@@ -111,27 +107,15 @@ void time_step ( void )
             U_nxt(i,j) = -U_prv(i,j) + 2.0*U(i,j)
                      + (dt*dt*c*c)/(dx*dy) * (
                         U(i-1,j)+U(i+1,j)+U(i,j-1)+U(i,j+1)-4.0*U(i,j)
-                    );
+                     );
         }
     }
-// END: T5
-}
-
-// TASK: T6
-// Communicate the border between processes.
-void border_exchange ( void )
-{
-// BEGIN: T6
-    ;
-// END: T6
 }
 
 
-// TASK: T7
 // Neumann (reflective) boundary condition
 void boundary_condition ( void )
 {
-// BEGIN: T7
     for ( int_t i=0; i<M; i++ )
     {
         U(i,-1) = U(i,1);
@@ -142,24 +126,6 @@ void boundary_condition ( void )
         U(-1,j) = U(1,j);
         U(M,j)  = U(M-2,j);
     }
-// END: T7
-}
-
-
-// TASK: T8
-// Save the present time step in a numbered file under 'data/'
-void domain_save ( int_t step )
-{
-// BEGIN: T8
-    char filename[256];
-    sprintf ( filename, "data/%.5ld.dat", step );
-    FILE *out = fopen ( filename, "wb" );
-    for ( int_t i=0; i<M; i++ )
-    {
-        fwrite ( &U(i,0), sizeof(real_t), N, out );
-    }
-    fclose ( out );
-// END: T8
 }
 
 
@@ -175,7 +141,6 @@ void simulate( void )
         }
 
         // Derive step t+1 from steps t and t-1
-        border_exchange();
         boundary_condition();
         time_step();
 
@@ -187,49 +152,32 @@ void simulate( void )
 
 int main ( int argc, char **argv )
 {
-// TASK: T1c
-// Initialise MPI
-// BEGIN: T1c
-    ;
-// END: T1c
+    OPTIONS *options = parse_args( argc, argv );
+    if ( !options )
+    {
+        fprintf( stderr, "Argument parsing failed\n" );
+        exit( EXIT_FAILURE );
+    }
 
-
-// TASK: T3
-// Distribute the user arguments to all the processes
-// BEGIN: T3
-        OPTIONS *options = parse_args( argc, argv );
-        if ( !options )
-        {
-            fprintf( stderr, "Argument parsing failed\n" );
-            exit( EXIT_FAILURE );
-        }
-
-        M = options->M;
-        N = options->N;
-        max_iteration = options->max_iteration;
-        snapshot_freq = options->snapshot_frequency;
-// END: T3
+    M = options->M;
+    N = options->N;
+    max_iteration = options->max_iteration;
+    snapshot_freq = options->snapshot_frequency;
 
     // Set up the initial state of the domain
     domain_initialize();
 
-
     struct timeval t_start, t_end;
 
-// TASK: T2
-// Time your code
-// BEGIN: T2
+    gettimeofday ( &t_start, NULL );
     simulate();
-// END: T2
+    gettimeofday ( &t_end, NULL );
+
+    printf ( "Total elapsed time: %lf seconds\n",
+        WALLTIME(t_end) - WALLTIME(t_start)
+    );
 
     // Clean up and shut down
     domain_finalize();
-
-// TASK: T1d
-// Finalise MPI
-// BEGIN: T1d
-    ;
-// END: T1d
-
     exit ( EXIT_SUCCESS );
 }

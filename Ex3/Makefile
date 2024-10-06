@@ -13,6 +13,7 @@ dirs:
 sequential: ${SEQUENTIAL_SRC_FILES}
 	$(CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
 parallel: ${PARALLEL_SRC_FILES}
+	mkdir -p data images
 	$(PARALLEL_CC) $^ $(CFLAGS) $(PARALLEL_DEFINE_FLAGS) -o $@ $(LDLIBS)
 plot: ${IMAGES}
 images/%.png: data/%.dat

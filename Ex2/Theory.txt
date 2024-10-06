@@ -1,0 +1,100 @@
+Question 1)
+
+Doing 5 runs with just 1 process (the root rank), took an average of 3.818s,
+with a difference of 0.022s between the fastest and slowest run.
+
+Running it with 2 processes means there is still only one rank performing the calculations,
+but now that rank must communicate its result to the root rank which adds some overhead.
+
+Doing 5 runs with 2 processes took an average of 3.907s, with a difference of 0.312s
+between the fastest and slowest. The slowest run with 1 process was also faster than the
+fastest run with 2 processes, though the difference was only 0.002s.
+
+The slowest run was not the first one, so values not being
+in the cache from earlier runs is probably not the reason. My guess is that the
+processes were scheduled differently in that run.
+
+The average time for 2 processes was slightly slower than running with just the root,
+which matches my expectations of there being some overhead with the inter-process communication.
+
+From now on I will be using the runs with 2 processes as the baseline, since running with
+2 processes includes the communication to the root rank.
+
+Running with 2 non-root ranks
+Average: 2.046s
+Max-min diff: 0.097s
+Average is 1.861s faster than baseline
+
+Running with 3 non-root ranks
+Average: 1.407s
+Max-min diff: 0.046s
+Average is 2.500s faster than baseline
+
+Running with 4 non-root ranks
+Average: 1.129s
+Max-min diff: 0.109s
+Average is 2.778s faster than baseline
+
+Running with 5 non-root ranks
+Average: 0.937s
+Max-min diff: 0.048s
+Average is 2.970s faster than baseline
+
+Running with 6 non-root ranks
+Average: 0.822s
+Max-min diff: 0.057s
+Average is 3.085s faster than baseline
+
+Running with 7 non-root ranks (my CPU has 8 cores)
+Average: 1.098s
+Max-min diff: 0.102s
+Average is 2.809s faster than baseline
+
+The reason it has gotten slower might be because the program is running with the same number
+of processes as my CPU has cores, so the scheduler must work more to allow other processes to
+perform work, whereas with 7 processes, the scheduler has 1 core left it can use for other stuff
+than this program.
+
+We see speed-up of 1.91 going from 1 to 2 processes performing calculations. The close, but not
+quite, 2x speed-up from doubling computing resources is quite typical. There is overhead from the 
+communication, which accounts from this. Still a really good performance increase
+
+Adding 2 processes, we see a 1.81x speed-up (and a 3.46x speed-up over 1 process). Still quite
+close to a 2x speed-up.
+
+Adding another 2 processes, we see a 1.37x speed-up. Also quite close to the 1.5x one would expect
+from increasing the computing resources by 50% (1.5).
+
+I will conclude with the speed-up being within the range of what I expected.
+
+------------------------------
+
+Question 2)
+This type of parallelisation is called partitioning (in this case block partitioning) with point-to-point
+communication.
+
+------------------------------
+
+Question 3)
+Sacheco and Malensek (An Introduction to Parallel Programming, 2021, Elsevier Inc.) list 4 differences
+between them:
+
+1. For collective communication, all the processes in the communicator must call the same collective
+function, whereas with point-to-point communication, sends must be matched with receives.
+
+2. The arguments passed by each process must be compatible, e.g. the destination rank passed to the function
+must be the same on all processes. If some processes set it to 0 and some to 1, this is erronous.
+In point-to-point communication, each process sending could pass different destination rank.
+
+3. "The argument output_data_p is only used on dest_process. However, all of the processes still 
+need to pass in an actual argument corresponding to output_data_p, even if it's just NULL."
+For the point-to-point communication functions, no arguments passed in are not "unnecessary" like
+in this case.
+
+4. Point-to-point communication is matched based on communicators and tags, whereas collective
+communication is not matched on tags, just communicators. 
+
+------------------------------
+
+Question 4)
+a is an int-pointer and b is just an int.

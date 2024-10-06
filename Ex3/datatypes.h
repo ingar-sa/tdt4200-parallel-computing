@@ -1,26 +1,25 @@
 #ifndef DATATYPES_H_
 #define DATATYPES_H_
 
+#include <mpi.h>
 #include "isa.h"
 
 typedef struct
 {
-    i64 my_rank;
+    i64 rank;
     i64 commsize;
-    i64 n_children;
+    i64 cells_per_rank;
 
     bool i_am_root_rank;
-    bool i_am_first_rank;
-    bool i_am_last_rank;
-    bool i_am_only_child;
-    bool there_is_one_child;
+    bool on_boundary;
 
-    i64 cells_per_rank;
-    i64 remaining_cells;
-    i64 n_my_cells;
+    int      cart_dims[2];
+    int      coords[2];
+    MPI_Comm cart_comm;
 
-    int *recv_counts;
-    int *displacements;
+    MPI_Datatype MpiCol;
+    MPI_Datatype MpiRow;
+    MPI_Datatype MpiGrid;
 } MpiCtx;
 
 // Simulation parameters: size, step count, and how often to save the state.

@@ -1,7 +1,5 @@
 #define _XOPEN_SOURCE 600
 
-// NOTE(ingar): Setting this to 4 will print additional debug info, but some of it is inside the
-// main loop, so I would not recommend it. None of it is useful to you (the grader) anyway.
 #ifndef SDB_LOG_LEVEL
 #define SDB_LOG_LEVEL 2
 #endif
