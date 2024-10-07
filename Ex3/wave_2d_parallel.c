@@ -6,7 +6,7 @@
 // ISA_LOG_LEVEL define. The levels are: 0, no logging; 1, only errors; 2, errors and warnings; 3,
 // errors, warnings, and info; 4, the previous and debug
 #ifndef ISA_LOG_LEVEL
-#define ISA_LOG_LEVEL 3
+#define ISA_LOG_LEVEL 4
 #endif
 
 #include "isa.h"
@@ -51,7 +51,7 @@ static MpiCtx mpi_ctx = {};
 // Rotate the time step buffers.
 
 static SimParams sim_params
-    = { .M = 512, .N = 512, .max_iteration = 4000, .snapshot_frequency = 20 };
+    = {}; //= { .M = 512, .N = 512, .max_iteration = 4000, .snapshot_frequency = 20 };
 
 static WaveEquationParams wave_equation_params = { .c = 1.0, .dx = 1.0, .dy = 1.0 };
 
@@ -82,6 +82,10 @@ domain_save(i64 step)
     int global_grid_dims[2] = { sim_params.M, sim_params.N };
     int local_grid_dims[2]  = { mpi_ctx.M, mpi_ctx.N };
     int local_coords[2]     = { mpi_ctx.y * mpi_ctx.M, mpi_ctx.x * mpi_ctx.N };
+
+    IsaLogDebug("Rank (%ld, %ld): global grid (%d, %d), local grid (%d, %d), local coords (%d, %d)",
+                mpi_ctx.y, mpi_ctx.x, global_grid_dims[0], global_grid_dims[1], local_grid_dims[0],
+                local_grid_dims[1], local_coords[0], local_coords[1]);
 
     MPI_Datatype my_area;
     MPI_Type_create_subarray(2, global_grid_dims, local_grid_dims, local_coords, MPI_ORDER_C,
@@ -156,6 +160,9 @@ domain_initialize(void)
     i64 M_offset = mpi_ctx.M * mpi_ctx.y;
     i64 N_offset = mpi_ctx.N * mpi_ctx.x;
 
+    IsaLogDebug("Rank (%ld, %ld) has offsets M(%ld) N(%ld)", mpi_ctx.y, mpi_ctx.x, M_offset,
+                N_offset);
+
     for(i64 i = 0; i < mpi_ctx.M; i++) {
         for(i64 j = 0; j < mpi_ctx.N; j++) {
             // Calculate delta (radial distance) adjusted for M x N grid
@@ -216,13 +223,22 @@ boundary_condition(void)
     i64 N = mpi_ctx.N;
 
     // BEGIN: T7
+
     for(i64 i = 0; i < M; i++) {
-        UCurr(i, -1) = UCurr(i, 1);
-        UCurr(i, N)  = UCurr(i, N - 2);
+        if(mpi_ctx.x == 0) {
+            UCurr(i, -1) = UCurr(i, 1);
+        }
+        if(mpi_ctx.x == (mpi_ctx.cart_cols - 1)) {
+            UCurr(i, N) = UCurr(i, N - 2);
+        }
     }
     for(i64 j = 0; j < N; j++) {
-        UCurr(-1, j) = UCurr(1, j);
-        UCurr(M, j)  = UCurr(M - 2, j);
+        if(mpi_ctx.y == 0) {
+            UCurr(-1, j) = UCurr(1, j);
+        }
+        if(mpi_ctx.y == (mpi_ctx.cart_rows - 1)) {
+            UCurr(M, j) = UCurr(M - 2, j);
+        }
     }
     // END: T7
 }
