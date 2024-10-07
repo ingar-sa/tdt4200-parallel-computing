@@ -6,7 +6,7 @@
 // ISA_LOG_LEVEL define. The levels are: 0, no logging; 1, only errors; 2, errors and warnings; 3,
 // errors, warnings, and info; 4, the previous and debug
 #ifndef ISA_LOG_LEVEL
-#define ISA_LOG_LEVEL 4
+#define ISA_LOG_LEVEL 3
 #endif
 
 #include "isa.h"
@@ -33,9 +33,9 @@ ISA_LOG_REGISTER(MPI2DWaveEquation);
 // Option to change numerical precision
 // Buffers for three time steps, indexed with 2 ghost points for the boundary
 
-#define UPrev(i, j) time_steps.prev_step[((i) + 1) * (sim_params.N + 2) + (j) + 1]
-#define UCurr(i, j) time_steps.curr_step[((i) + 1) * (sim_params.N + 2) + (j) + 1]
-#define UNext(i, j) time_steps.next_step[((i) + 1) * (sim_params.N + 2) + (j) + 1]
+#define UPrev(i, j) time_steps.prev_step[((i) + 1) * (mpi_ctx.N + 2) + (j) + 1]
+#define UCurr(i, j) time_steps.curr_step[((i) + 1) * (mpi_ctx.N + 2) + (j) + 1]
+#define UNext(i, j) time_steps.next_step[((i) + 1) * (mpi_ctx.N + 2) + (j) + 1]
 
 // TASK: T1b
 // Declare variables each MPI process will need
@@ -79,35 +79,21 @@ domain_save(i64 step)
     MPI_File_open(mpi_ctx.cart_comm, filename, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL,
                   &out);
 
-    int rows      = mpi_ctx.cart_dims[0];
-    int cols      = mpi_ctx.cart_dims[1];
-    int m         = mpi_ctx.coords[0];
-    int n         = mpi_ctx.coords[1];
-    int grid_size = sim_params.M * sim_params.N;
-    int stride    = cols * grid_size;
-
-    MPI_Offset offset;
-    offset = m * stride + n * grid_size;
-
-    i64 global_M = sim_params.M * rows;
-    i64 global_N = sim_params.N * cols;
+    int global_grid_dims[2] = { sim_params.M, sim_params.N };
+    int local_grid_dims[2]  = { mpi_ctx.M, mpi_ctx.N };
+    int local_coords[2]     = { mpi_ctx.y * mpi_ctx.M, mpi_ctx.x * mpi_ctx.N };
 
     MPI_Datatype my_area;
-    MPI_Type_create_subarray(
-        2, (int[2]){ global_M, global_N }, (int[2]){ sim_params.M, sim_params.N },
-        (int[2]){ mpi_ctx.coords[0] * sim_params.M, mpi_ctx.coords[1] * sim_params.N }, MPI_ORDER_C,
-        MPI_DOUBLE, &my_area);
+    MPI_Type_create_subarray(2, global_grid_dims, local_grid_dims, local_coords, MPI_ORDER_C,
+                             MPI_DOUBLE, &my_area);
     MPI_Type_commit(&my_area);
 
-    MPI_File_set_view(out, offset, MPI_DOUBLE, my_area, "native", MPI_INFO_NULL);
-    for(i64 i = 0; i < sim_params.M; ++i) {
-        MPI_File_write_at_all(out, offset, &UCurr(i, 0), sim_params.N, MPI_DOUBLE,
-                              MPI_STATUS_IGNORE);
-    }
-    // MPI_File_write_all(out, &UCurr(0, 0), 1, mpi_ctx.MpiGrid, MPI_STATUS_IGNORE);
+    MPI_File_set_view(out, 0, MPI_DOUBLE, my_area, "native", MPI_INFO_NULL);
+    MPI_Barrier(mpi_ctx.cart_comm);
+    MPI_File_write_all(out, &UCurr(0, 0), 1, mpi_ctx.MpiGrid, MPI_STATUS_IGNORE);
 
     MPI_File_close(&out);
-    if(mpi_ctx.i_am_root_rank) {
+    if(mpi_ctx.i_am_root_rank && (step % 100) == 0) {
         IsaLogDebug("Saved to file %s", filename);
     }
 
@@ -129,26 +115,23 @@ border_exchange(void)
     // BEGIN: T6
     int north, south, east, west;
     find_neighbors(&north, &south, &east, &west);
-    //    IsaLogDebug("Rank %d (%d, %d) has neighbors %dN, %dS, %dE, %dW", mpi_ctx.cart_rank,
-    //                mpi_ctx.coords[0], mpi_ctx.coords[1], north, south, east, west);
 
     // Send top row to north, receive top row from south in bottom ghost row
-    MPI_Sendrecv(&UCurr(0, 0), 1, mpi_ctx.MpiRow, north, 0, &UCurr(sim_params.M, 0), 1,
-                 mpi_ctx.MpiRow, south, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
+    MPI_Sendrecv(&UCurr(0, 0), 1, mpi_ctx.MpiRow, north, 0, &UCurr(mpi_ctx.M, 0), 1, mpi_ctx.MpiRow,
+                 south, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
 
     // Send bottom row to south, receive bottom row from north in top ghost row
-    MPI_Sendrecv(&UCurr(sim_params.M - 1, 0), 1, mpi_ctx.MpiRow, south, 0, &UCurr(-1, 0), 1,
+    MPI_Sendrecv(&UCurr(mpi_ctx.M - 1, 0), 1, mpi_ctx.MpiRow, south, 0, &UCurr(-1, 0), 1,
                  mpi_ctx.MpiRow, north, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
 
     // Send right col to east, reveive right row from west into left ghost col
-    MPI_Sendrecv(&UCurr(0, sim_params.N - 1), 1, mpi_ctx.MpiCol, east, 0, &UCurr(0, -1), 1,
+    MPI_Sendrecv(&UCurr(0, mpi_ctx.N - 1), 1, mpi_ctx.MpiCol, east, 0, &UCurr(0, -1), 1,
                  mpi_ctx.MpiCol, west, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
 
     // Send left col to west, receive left col from east into right ghost col
-    MPI_Sendrecv(&UCurr(0, 0), 1, mpi_ctx.MpiCol, west, 0, &UCurr(0, sim_params.N), 1,
-                 mpi_ctx.MpiCol, east, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
+    MPI_Sendrecv(&UCurr(0, 0), 1, mpi_ctx.MpiCol, west, 0, &UCurr(0, mpi_ctx.N), 1, mpi_ctx.MpiCol,
+                 east, 0, mpi_ctx.cart_comm, MPI_STATUS_IGNORE);
 
-    // IsaLogDebug("Exhanged borders");
     //  END: T6
 }
 
@@ -163,22 +146,25 @@ domain_initialize(void)
     f64 dx = wave_equation_params.dx;
     f64 dy = wave_equation_params.dy;
 
-    size_t alloc_size = (sim_params.M + 2) * (sim_params.N + 2) * sizeof(f64);
+    size_t alloc_size = (mpi_ctx.M + 2) * (mpi_ctx.N + 2) * sizeof(f64);
     IsaLogDebug("Allocating %zd bytes for each timestep", alloc_size);
 
     time_steps.prev_step = malloc(alloc_size);
     time_steps.curr_step = malloc(alloc_size);
     time_steps.next_step = malloc(alloc_size);
 
-    // TODO(ingar): Verify that this is correct
-    i64 M_offset = sim_params.M * mpi_ctx.coords[0];
-    i64 N_offset = sim_params.N * mpi_ctx.coords[1];
+    i64 M_offset = mpi_ctx.M * mpi_ctx.y;
+    i64 N_offset = mpi_ctx.N * mpi_ctx.x;
 
-    for(i64 i = 0; i < sim_params.M; i++) {
-        for(i64 j = 0; j < sim_params.N; j++) {
+    for(i64 i = 0; i < mpi_ctx.M; i++) {
+        for(i64 j = 0; j < mpi_ctx.N; j++) {
             // Calculate delta (radial distance) adjusted for M x N grid
-            f64 delta   = sqrt(((i - M_offset / 2.0) * (i - M_offset / 2.0)) / (f64)M_offset
-                               + ((j - N_offset / 2.0) * (j - N_offset / 2.0)) / (f64)N_offset);
+            f64 delta
+                = sqrt(((i + M_offset - sim_params.M / 2.0) * (i + M_offset - sim_params.M / 2.0))
+                           / (f64)sim_params.M
+                       + ((j + N_offset - sim_params.N / 2.0) * (j + N_offset - sim_params.N / 2.0))
+                             / (f64)sim_params.N);
+
             UPrev(i, j) = UCurr(i, j) = exp(-4.0 * delta * delta);
         }
     }
@@ -186,7 +172,6 @@ domain_initialize(void)
     // Set the time step for 2D case
     wave_equation_params.dt = dx * dy / (c * sqrt(dx * dx + dy * dy));
     // END: T4
-    // TODO(ingar): Remove
 }
 
 // Get rid of all the memory allocations
@@ -203,8 +188,8 @@ domain_finalize(void)
 void
 time_step(void)
 {
-    i64 M  = sim_params.M;
-    i64 N  = sim_params.N;
+    i64 M  = mpi_ctx.M;
+    i64 N  = mpi_ctx.N;
     f64 c  = wave_equation_params.c;
     f64 dx = wave_equation_params.dx;
     f64 dy = wave_equation_params.dy;
@@ -227,8 +212,8 @@ time_step(void)
 void
 boundary_condition(void)
 {
-    i64 M = sim_params.M;
-    i64 N = sim_params.N;
+    i64 M = mpi_ctx.M;
+    i64 N = mpi_ctx.N;
 
     // BEGIN: T7
     for(i64 i = 0; i < M; i++) {
@@ -253,8 +238,12 @@ simulate(void)
         if((iteration % snapshot_frequency) == 0) {
             domain_save(iteration / snapshot_frequency);
         }
+
         border_exchange();
         if(mpi_ctx.on_boundary) {
+            if(iteration % 100 == 0) {
+                IsaLogDebug("Rank %ld performing boundary condition", mpi_ctx.rank);
+            }
             boundary_condition();
         }
         time_step();
@@ -273,15 +262,9 @@ mpi_types_free(void)
 bool
 on_boundary(void)
 {
-    int x_coord     = mpi_ctx.coords[1];
-    int y_coord     = mpi_ctx.coords[0];
-    int x_end_coord = mpi_ctx.cart_dims[1] - 1;
-    int y_end_coord = mpi_ctx.cart_dims[0] - 1;
-
-    bool on_boundary = false;
-    if((x_coord == 0) || (y_coord == 0) || (x_coord == x_end_coord) || (y_coord == y_end_coord)) {
-        on_boundary = true;
-    }
+    bool on_boundary
+        = ((mpi_ctx.y == 0) || (mpi_ctx.x == 0) || (mpi_ctx.y == (mpi_ctx.cart_rows - 1))
+           || (mpi_ctx.x == (mpi_ctx.cart_cols - 1)));
 
     return on_boundary;
 }
@@ -342,40 +325,39 @@ mpi_ctx_initialize(int argc, char **argv)
     MPI_Comm_rank(cart_comm, &cart_rank);
     MPI_Cart_coords(cart_comm, cart_rank, n_cart_dims, coords);
 
-    mpi_ctx.rank         = cart_rank;
-    mpi_ctx.cart_dims[0] = cart_dims[0];
-    mpi_ctx.cart_dims[1] = cart_dims[1];
-    mpi_ctx.coords[0]    = coords[0];
-    mpi_ctx.coords[1]    = coords[1];
-    mpi_ctx.cart_comm    = cart_comm;
-    mpi_ctx.on_boundary  = on_boundary();
+    mpi_ctx.rank        = cart_rank;
+    mpi_ctx.cart_rows   = cart_dims[0];
+    mpi_ctx.cart_cols   = cart_dims[1];
+    mpi_ctx.y           = coords[0];
+    mpi_ctx.x           = coords[1];
+    mpi_ctx.cart_comm   = cart_comm;
+    mpi_ctx.on_boundary = on_boundary();
+    mpi_ctx.M           = sim_params.M / mpi_ctx.cart_rows;
+    mpi_ctx.N           = sim_params.N / mpi_ctx.cart_cols;
 
-    sim_params.M = sim_params.M / mpi_ctx.cart_dims[0];
-    sim_params.N = sim_params.N / mpi_ctx.cart_dims[1];
-
-    IsaLogDebug(
-        "Rank %ld has sim_params:\n M=%ld\n N=%ld\n max_iteration=%ld\n snapshot_frequency=%ld\n",
-        mpi_ctx.rank, sim_params.M, sim_params.N, sim_params.max_iteration,
-        sim_params.snapshot_frequency);
+    IsaLogDebug("Rank %ld has sim_params:\n M=%ld\n N=%ld\n max_iteration=%ld\n "
+                "snapshot_frequency=%ld\n",
+                mpi_ctx.rank, mpi_ctx.M, mpi_ctx.N, sim_params.max_iteration,
+                sim_params.snapshot_frequency);
 
     MPI_Datatype MpiCol;
-    MPI_Type_vector(sim_params.M, 1, sim_params.N + 2, MPI_DOUBLE, &MpiCol);
+    MPI_Type_vector(mpi_ctx.M, 1, mpi_ctx.N + 2, MPI_DOUBLE, &MpiCol);
     MPI_Type_commit(&MpiCol);
     mpi_ctx.MpiCol = MpiCol;
 
     MPI_Datatype MpiRow;
-    MPI_Type_contiguous(sim_params.N, MPI_DOUBLE, &MpiRow);
+    MPI_Type_contiguous(mpi_ctx.N, MPI_DOUBLE, &MpiRow);
     MPI_Type_commit(&MpiRow);
     mpi_ctx.MpiRow = MpiRow;
 
     MPI_Datatype MpiGrid;
-    MPI_Type_vector(sim_params.M, sim_params.N, sim_params.N + 2, MPI_DOUBLE, &MpiGrid);
+    MPI_Type_vector(mpi_ctx.M, mpi_ctx.N, mpi_ctx.N + 2, MPI_DOUBLE, &MpiGrid);
     MPI_Type_commit(&MpiGrid);
     mpi_ctx.MpiGrid = MpiGrid;
 
     IsaLogDebug("Process %d in MPI_COMM_WORLD is now process %d in cart_comm with coordinates "
                 "(%d, %d) is %son the boundary",
-                mpi_ctx.rank, cart_rank, coords[0], coords[1], mpi_ctx.on_boundary ? "" : "not ");
+                mpi_ctx.rank, cart_rank, mpi_ctx.y, mpi_ctx.x, mpi_ctx.on_boundary ? "" : "not ");
 }
 
 int
@@ -395,8 +377,6 @@ main(int argc, char **argv)
     // TASK: T3
     // Distribute the user arguments to all the processes
     // BEGIN: T3
-    // TODO(ingar): The root rank isn't handling io by itself, so it can be part of the calculation
-    // this time around, so the logic must change to accommodate this.
     mpi_ctx.rank           = my_rank;
     mpi_ctx.commsize       = commsize;
     mpi_ctx.i_am_root_rank = (mpi_ctx.rank == 0);

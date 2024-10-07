@@ -13,10 +13,11 @@ typedef struct
     bool i_am_root_rank;
     bool on_boundary;
 
-    int      cart_dims[2];
-    int      coords[2];
-    MPI_Comm cart_comm;
+    i64 M, N;
+    int y, x;
+    int cart_cols, cart_rows;
 
+    MPI_Comm     cart_comm;
     MPI_Datatype MpiCol;
     MPI_Datatype MpiRow;
     MPI_Datatype MpiGrid;
