@@ -1,20 +1,20 @@
 CC=gcc
-PARALLEL_CC=mpicc
-CFLAGS+= -std=c99 -O2 -Wall -Wextra
-PARALLEL_DEFINE_FLAGS?=
+CFLAGS+= -std=c99 -fopenmp
 LDLIBS+= -lm
-SEQUENTIAL_SRC_FILES=wave_2d_sequential.c argument_utils.c
-PARALLEL_SRC_FILES=wave_2d_parallel.c argument_utils.c
+SEQUENTIAL_SRC_FILES=wave_2d_sequential.c
+PARALLEL_SRC_FILES=wave_2d_workshare.c
+BARRIER_SRC_FILES=wave_2d_barrier.c
 IMAGES=$(shell find data -type f | sed s/\\.dat/.png/g | sed s/data/images/g )
 .PHONY: all clean dirs plot movie
-all: dirs ${TARGETS}
+all: dirs ${SEQUENTIAL_SRC_FILES} ${PARALLEL_SRC_FILES} ${BARRIER_SRC_FILES}
 dirs:
 	mkdir -p data images
 sequential: ${SEQUENTIAL_SRC_FILES}
 	$(CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
 parallel: ${PARALLEL_SRC_FILES}
-	mkdir -p data images
-	$(PARALLEL_CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
+	$(CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
+barrier: ${BARRIER_SRC_FILES}
+	$(CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
 plot: ${IMAGES}
 images/%.png: data/%.dat
 	./plot_image.sh $<
@@ -24,15 +24,10 @@ check: dirs sequential parallel
 	mkdir -p data_sequential
 	./sequential
 	cp -rf ./data/* ./data_sequential
-	mpiexec -n 1 --oversubscribe ./parallel
-	./compare.sh
-	mpiexec -n 4 --oversubscribe ./parallel
-	./compare.sh
-	rm ./data_sequential/*
-	./sequential -m 2048 -n 512
-	cp -rf ./data/* ./data_sequential
-	mpiexec -n 16 --oversubscribe ./parallel -m 2048 -n 512
+	./parallel
 	./compare.sh
 	rm -rf data_sequential
 clean:
-	-rm -fr sequential parallel data images wave.mp4
+	-rm -fr ${TARGETS} data images wave.mp4
+	-rm sequential
+	-rm parallel

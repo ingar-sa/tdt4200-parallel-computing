@@ -4,10 +4,10 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     bc
     openmpi
+    llvmPackages_19.openmp
   ];
 
   shellHook = ''
-    echo "MPI development environment loaded"
-    echo "OpenMPI version: $(mpirun --version | head -n 1)"
+    echo "PB development environment loaded"
   '';
 }

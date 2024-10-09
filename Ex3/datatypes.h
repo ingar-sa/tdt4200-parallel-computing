@@ -2,20 +2,23 @@
 #define DATATYPES_H_
 
 #include <mpi.h>
-#include "isa.h"
+#include <stdint.h>
+#include <stdbool.h>
 
+// Option to change numerical precision
+typedef int64_t int_t;
+typedef double  real_t;
+
+// Context for each MPI process
 typedef struct
 {
-    i64 rank;
-    i64 commsize;
-    i64 cells_per_rank;
+    int_t rank;
+    int_t commsize;
+    bool  on_boundary;
 
-    bool i_am_root_rank;
-    bool on_boundary;
-
-    i64 M, N;
-    int y, x;
-    int cart_cols, cart_rows;
+    int_t M, N;
+    int_t y, x;
+    int_t cart_cols, cart_rows;
 
     MPI_Comm     cart_comm;
     MPI_Datatype MpiCol;
@@ -23,31 +26,33 @@ typedef struct
     MPI_Datatype MpiGrid;
 } MpiCtx;
 
-// Simulation parameters: size, step count, and how often to save the state.
+// NOTE: I use wrapper structs for the global state because I think it improves the readability of
+// the code
+
+//  Simulation parameters: size, step count, and how often to save the state.
 typedef struct
 {
-    i64 M;
-    i64 N;
-    i64 max_iteration;
-    i64 snapshot_frequency;
+    int_t M;
+    int_t N;
+    int_t max_iteration;
+    int_t snapshot_frequency;
 } SimParams;
 
 // Wave equation parameters, time step is derived from the space step.
-
 typedef struct
 {
-    const f64 c;
-    const f64 dx;
-    const f64 dy;
-    f64       dt;
+    const real_t c;
+    const real_t dx;
+    const real_t dy;
+    real_t       dt;
 } WaveEquationParams; // wave_equation_params;
 
-// Buffers for three time steps, indexed with 2 ghost points for the boundary.
+// Buffers for three time steps, indexed with 2 ghost points for the boundary
 typedef struct
 {
-    f64 *prev_step;
-    f64 *curr_step;
-    f64 *next_step;
+    real_t *prev_step;
+    real_t *curr_step;
+    real_t *next_step;
 } TimeSteps;
 
 #endif

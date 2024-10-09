@@ -1,0 +1,31 @@
+Question 1)
+
+The functionality of MPI_Allgather is analogous to using MPI_Gather followed by MPI_Bcast.
+Therefore, the utility of allgather and gather differs. But, supposing you want to achieve
+the functionality of allgather using gather and bcast, there are potential differences as
+to how the communication is achieved. The implementation of gather will be optimized for
+collecting data from all processes in a single process, bcast will be  optimized for sending
+data from one process to all processes, and allgather will be optimized for distributing data
+from all processes to all other processes. The best way to perform gather and bcast is not
+necessarily the best way to perform both operations in one. Therefore, it is likely that 
+allgather will be faster for its purpose. Another potential performance improvement from using
+allgather is the reduced overhead from initiating only one communication.
+
+Question 2)
+
+One way to do it would be to store the ranks at each coordinate in the cartesian communicator.
+A process would then send its corners to its diagonal neighbors as part of the border exchange.
+
+Question 3)
+
+Instead of there being a single wave, there are now four. In general, if M = k*N, there will be
+k waves. This is due to the symmetry around the center when M = N is broken. Due to this 
+asymmetry, the distribution of the radial distances from the center is different than when
+it is symmetric, causing more waves to appear.
+
+
+Question 4)
+
+Strong scaling is when the number of processors is increased while the problem size remains,
+and is bounded by Amdahl's law. Weak scaling is when the problem size increases alongside the
+number of processors, and is described by Gustafson's law.
