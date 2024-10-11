@@ -68,6 +68,7 @@ typedef struct
     f64 *prev_step;
     f64 *curr_step;
     f64 *next_step;
+    f64 *comp;
 } TimeSteps;
 static TimeSteps time_steps;
 
@@ -100,11 +101,20 @@ domain_initialize(void)
     time_steps.prev_step = malloc(time_step_sz);
     time_steps.curr_step = malloc(time_step_sz);
     time_steps.next_step = malloc(time_step_sz);
+    time_steps.comp      = malloc(time_step_sz);
 
     for(i64 i = 0; i < N; i++) {
         for(i64 j = 0; j < N; j++) {
-            f64 delta   = sqrt(((i - N / 2) * (i - N / 2) + (j - N / 2) * (j - N / 2)) / (f64)N);
-            U_prv(i, j) = U(i, j) = exp(-4.0 * delta * delta);
+            f64 delta = sqrt(((i - N / 2) * (i - N / 2) + (j - N / 2) * (j - N / 2)) / (f64)N);
+            // IsaLogDebug("Delta: %f", delta);
+            // printf("Delta(%ld, %ld): %f\n", i, j, delta);
+
+            f64 val = exp(-4.0 * delta * delta);
+            if(val > 0.1) {
+                // printf("Val(%ld, %ld): %f\n", i, j, val);
+            }
+            U_prv(i, j) = U(i, j) = val;
+            // printf("U(%ld, %ld): %f\n", i, j, U(i, j));
         }
     }
 
@@ -124,15 +134,16 @@ domain_finalize(void)
 // TASK: T3
 // Integration formula
 void
-time_step(i64 thread_id)
+time_step(i64 row_start, i64 row_end)
 {
+    IsaLogDebug("Performing time step from row %ld to row %ld", row_start, row_end);
     i64 N  = sim_params.N;
     f64 dt = weq_params.dt;
     f64 h  = weq_params.h;
     f64 c  = weq_params.c;
 
     // BEGIN: T3
-    for(i64 i = 0; i < N; i += 1) {
+    for(i64 i = row_start; i < row_end; i += 1) {
         for(i64 j = 0; j < N; j++) {
             U_nxt(i, j)
                 = -U_prv(i, j) + 2.0 * U(i, j)
@@ -146,17 +157,23 @@ time_step(i64 thread_id)
 // TASK: T4
 // Neumann (reflective) boundary condition
 void
-boundary_condition(i64 thread_id)
+boundary_condition(PtSimContext sim_ctx)
 {
     i64 N = sim_params.N;
-    // TODO(ingar): Logic for only copying outer edges
 
     // BEGIN: T4
     for(i64 i = 0; i < N; i += 1) {
-        U(i, -1) = U(i, 1);
-        U(i, N)  = U(i, N - 2);
+        if(sim_ctx.t_id == 1) {
+            U(i, -1) = U(i, 1);
+        }
+        if(sim_ctx.t_id == pt_ctx.n_threads) {
+            U(i, N) = U(i, N - 2);
+        }
     }
-    for(i64 j = 0; j < N; j += 1) {
+
+    i64 j   = sim_ctx.row_start;
+    i64 end = sim_ctx.row_end;
+    for(; j < end; j += 1) {
         U(-1, j) = U(1, j);
         U(N, j)  = U(N - 2, j);
     }
@@ -167,10 +184,10 @@ boundary_condition(i64 thread_id)
 void
 domain_save(i64 step)
 {
-    i64 N = sim_params.N;
-
+    i64  N = sim_params.N;
     char filename[256];
     sprintf(filename, "data/%.5ld.dat", step);
+    IsaLogDebug("Saving to file %s", filename);
     FILE *out = fopen(filename, "wb");
     for(i64 i = 0; i < N; i++) {
         fwrite(&U(i, 0), sizeof(f64), N, out);
@@ -184,14 +201,18 @@ void *
 // simulate(void *id)
 simulate(void *arg)
 {
-    PtSimContext *sim_ctx = (PtSimContext *)arg;
-    IsaLogDebug("Hello from thread %ld!", sim_ctx->t_id);
+    PtSimContext *sim_ctx_p = (PtSimContext *)arg;
+    PtSimContext  sim_ctx;
+    memcpy(&sim_ctx, sim_ctx_p, sizeof(PtSimContext)); // Move sim context onto the stack
+    IsaLogDebug("Hello from thread %ld!", sim_ctx.t_id);
+
+    size_t domain_size = (sim_params.N + 2) * (sim_params.N + 2) * sizeof(f64);
 
     pthread_barrier_wait(&pt_ctx.barrier);
     // BEGIN: T5
     // Go through each time step
     for(i64 iteration = 0; iteration <= sim_params.max_iteration; iteration++) {
-        if(sim_ctx->t_id == 1) {
+        if(sim_ctx.t_id == 1) {
             if((iteration % sim_params.snapshot_freq) == 0) {
                 domain_save(iteration / sim_params.snapshot_freq);
             }
@@ -200,21 +221,27 @@ simulate(void *arg)
         // Derive step t+1 from steps t and t-1
 
         pthread_barrier_wait(&pt_ctx.barrier);
-        boundary_condition(0);
+        boundary_condition(sim_ctx);
 
         pthread_barrier_wait(&pt_ctx.barrier);
-        time_step(0);
+        time_step(sim_ctx.row_start, sim_ctx.row_end);
 
         // Rotate the time step buffers
         pthread_barrier_wait(&pt_ctx.barrier);
-        if(sim_ctx->t_id == 1) {
+        if(sim_ctx.t_id == 1) {
+            if(iteration > 0) {
+                int comp = memcmp(time_steps.comp, &U(-1, 0), domain_size);
+                if(comp < 0) {
+                    IsaLogDebug("Buffers are equal");
+                }
+            }
+            memcpy(time_steps.comp, &U(-1, 0), domain_size);
             move_buffer_window();
         }
-        pthread_barrier_wait(&pt_ctx.barrier);
     }
     // END: T5
 
-    IsaLogDebug("Goodbye from thread %ld", sim_ctx->t_id);
+    IsaLogDebug("Goodbye from thread %ld", sim_ctx.t_id);
     return NULL;
 }
 
@@ -330,7 +357,7 @@ pt_ctx_deinitialize(void)
 }
 
 static void
-start_simulation(void)
+run_simulation(void)
 {
     for(i64 i = 0; i < pt_ctx.n_threads; ++i) {
         pthread_create(&pt_ctx.pthreads[i], NULL, simulate, &pt_ctx.sim_contexts[i]);
@@ -361,17 +388,21 @@ main(int argc, char **argv)
     pt_ctx_initialize();
     // END: T1b
 
-#if 0
     // Set up the initial state of the domain
     domain_initialize();
+    for(i64 i = 0; i < sim_params.N; ++i) {
+        // printf("Float %ld: %f\n", i, U(256, 0));
+    }
+    domain_save(0);
 
+#if 1
     // Time the execution
     gettimeofday(&t_start, NULL);
 
     // TASK: T2
     // Run the integration loop
     // BEGIN: T2
-    start_simulation();
+    run_simulation();
     // END: T2
 
     // Report how long we spent in the integration stage

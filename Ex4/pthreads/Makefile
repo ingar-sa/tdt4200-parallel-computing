@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS+= -std=c99 -pthread
+CFLAGS+= -O0 -g -std=c99 -pthread
 LDLIBS+= -lm
 SEQUENTIAL_SRC_FILES=wave_2d_sequential.c
 PARALLEL_SRC_FILES=wave_2d_pthread.c
