@@ -1,0 +1,24 @@
+Question 1)
+There is no need for a border exchange since pthreads share the heap.
+
+Question 2)
+OpenMP is an interface for parallel programming with threads while MPI is an interface
+for parallel programming with processes.
+
+Question 3)
+The OpenMP barrier implementation is almost identical to (at least my) pthread implmentation,
+while the OpenMP workshare implementation is much simpler than both. Like the pthread implementation,
+the barrier implementation starts threads for main_loop (equivalent to simulate in pthread),
+makes sure only one thread saves the domain and swaps the buffers, and places barriers between
+the function calls to ensure all work is done for one time step before continuing. It differs from
+my pthread implmentation in that it schedules the time step calculation and boundary condition in a
+round-robin fashion, while I divide the domain into sections of consecutive rows, and each thread
+gets their own section. The worksharing implementation takes a simpler approach of just parallelizing
+the time step calculation instead of the entire simulation loop. Based on timings on my machine, the
+worksharing implementation is faster than both the pthread and barrier implementation.
+
+Question 4)
+A recursion problem can be parallelized in OpenMP by using tasks. Declare a parallel section
+using #pragma omp parallel, then create a task of the main function and the recursion step(s) using
+#pragma omp task. Each function call will be made into a task and put onto a work queue and executed
+in turn by one of the threads.

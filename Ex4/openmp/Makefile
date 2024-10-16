@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS+= -std=c99 -fopenmp
+CFLAGS+= -O2 -std=c99 -fopenmp
 LDLIBS+= -lm
 SEQUENTIAL_SRC_FILES=wave_2d_sequential.c
 PARALLEL_SRC_FILES=wave_2d_workshare.c
@@ -12,6 +12,7 @@ dirs:
 sequential: ${SEQUENTIAL_SRC_FILES}
 	$(CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
 parallel: ${PARALLEL_SRC_FILES}
+	mkdir -p data images
 	$(CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
 barrier: ${BARRIER_SRC_FILES}
 	$(CC) $^ $(CFLAGS) -o $@ $(LDLIBS)
