@@ -1,0 +1,78 @@
+Device count: 1
+Name: Tesla T4
+Compute capability: 7.5
+Multiprocessors: 40
+Warp size: 32
+Global memory: 14.568GiB
+Per-block shared memory: 48.000KiB
+Per-block registers: 65536
+
+Max threads per block: 1024
+Max threads dim: 1024 x 1024 x 64
+Max gid size: 2147483647 x 65535 x 65535
+Device count: 1
+Name: Tesla T4
+Compute capability: 7.5
+Multiprocessors: 40
+Warp size: 32
+Global memory: 14.568GiB
+Per-block shared memory: 48.000KiB
+Per-block registers: 65536
+
+Max threads per block: 1024
+Max threads dim: 1024 x 1024 x 64
+Max gid size: 2147483647 x 65535 x 65535
+Domain succesfully initialized. Running simulation
+Saving domain 0
+Saving domain 200
+Saving domain 400
+Saving domain 600
+Saving domain 800
+Saving domain 1000
+Saving domain 1200
+Saving domain 1400
+Saving domain 1600
+Saving domain 1800
+Saving domain 2000
+Saving domain 2200
+Saving domain 2400
+Saving domain 2600
+Saving domain 2800
+Saving domain 3000
+Saving domain 3200
+Saving domain 3400
+Saving domain 3600
+Saving domain 3800
+Saving domain 4000
+Saving domain 4200
+Saving domain 4400
+Saving domain 4600
+Saving domain 4800
+Saving domain 5000
+Saving domain 5200
+Saving domain 5400
+Saving domain 5600
+Saving domain 5800
+Saving domain 6000
+Saving domain 6200
+Saving domain 6400
+Saving domain 6600
+Saving domain 6800
+Saving domain 7000
+Saving domain 7200
+Saving domain 7400
+Saving domain 7600
+Saving domain 7800
+Saving domain 8000
+Saving domain 8200
+Saving domain 8400
+Saving domain 8600
+Saving domain 8800
+Saving domain 9000
+Saving domain 9200
+Saving domain 9400
+Saving domain 9600
+Saving domain 9800
+Saving domain 10000
+Total elapsed time: 0.274020 seconds
+Domain succesfully finalized. The simulation has been completed
